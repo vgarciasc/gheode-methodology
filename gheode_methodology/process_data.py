@@ -1,10 +1,9 @@
 import pandas as pd
 import numpy as np
 import xarray as xr
-import matplotlib.pyplot as plt
+import argparse
 import datetime
 from sklearn.cluster import KMeans
-from mpl_toolkits.basemap import Basemap
 
 from gheode_methodology.plots import plot_clusterings, plot_clusterings_2, plot_season_functions
 
@@ -132,37 +131,39 @@ def make_dataframe(xarrays, X_cluster_centroids, X_cluster_means,
 
 
 if __name__ == "__main__":
-    K = 2
-    lag_time = 1
-    time_window_size = 8
-    netherland_coords = [52.5, 4.5]
-    center_coords = [0, 0]
-    should_normalize_clusterings = False
-    should_include_season_fns = True
-    date_start, date_end = "1979-01-07", "2021-12-31"
+    args = argparse.ArgumentParser()
+    args.add_argument("--K", type=int, default=10)
+    args.add_argument("--lag-time", type=int, default=1)
+    args.add_argument("--time-window-size", type=int, default=8)
+    args.add_argument("--netherland-coords", type=float, nargs=2, default=[52.5, 4.5])
+    args.add_argument("--center-coords", type=float, nargs=2, default=[0, 0])
+    args.add_argument("--should-normalize-clusterings", type=bool, default=False)
+    args.add_argument("--should-include-season-fns", type=bool, default=True)
+    args.add_argument("--date-start", type=str, default="1979-01-07")
+    args.add_argument("--date-end", type=str, default="2021-12-31")
+    args.add_argument("--version-name", type=str, default="v3")
+    args.add_argument("--attr-names", type=str, nargs="+", default=["msl", "t2m", "sst", "r", "tp"])
+    args.add_argument("--input-filepaths", type=str, nargs="+", default=[
+        "../data/msl_r-global_t-weekly.nc",
+        "../data/t2m_r-global_t-weekly.nc",
+        "../data/sst_r-global_t-weekly.nc",
+        "../data/rh_r-global_t-weekly.nc",
+        "../data/tp_r-netherlands_t-weekly-tp.nc"
+    ])
+    args = args.parse_args()
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    version_name = "v3"
-
-    attr_names = ["msl", "t2m", "sst", "r", "tp"]
-    X_names = attr_names[:-1]
-    y_name = attr_names[-1]
-
-    filepaths = ["../data/msl_r-global_t-weekly.nc",
-                 "../data/t2m_r-global_t-weekly.nc",
-                 "../data/sst_r-global_t-weekly.nc",
-                 "../data/rh_r-global_t-weekly.nc",
-                 "../data/tp_r-netherlands_t-weekly-tp.nc"]
+    X_names = args.attr_names[:-1]
+    y_name = args.attr_names[-1]
 
     # Loading xarrays
-    xarrays = load_xarrays(attr_names, filepaths)
+    xarrays = load_xarrays(args.attr_names, args.input_filepaths)
 
     # Loading metadata from xarrays
-    _xarray = xarrays[attr_names[0]]
+    _xarray = xarrays[args.attr_names[0]]
     resolution = (_xarray.lon.values.max() - _xarray.lon.values.min()) / (_xarray.lon.values.shape[0] - 1)
     lats = np.arange(_xarray.lat.values.min(), _xarray.lat.values.max() + resolution, resolution)
     lons = np.arange(_xarray.lon.values.min(), _xarray.lon.values.max() + resolution, resolution)
-    dims = (getattr(_xarray, attr_names[0]).to_numpy().shape[1:])
+    dims = (getattr(_xarray, args.attr_names[0]).to_numpy().shape[1:])
     n_days = dims[0] * dims[1]
 
     print("resolution:", resolution)
@@ -172,10 +173,10 @@ if __name__ == "__main__":
     print("n_days:", n_days)
 
     # Filtering time window
-    for name in attr_names:
-        xarrays[name] = xarrays[name].sel(time=slice(date_start, date_end))
+    for name in args.attr_names:
+        xarrays[name] = xarrays[name].sel(time=slice(args.date_start, args.date_end))
 
-    T = len(xarrays[attr_names[0]].time)
+    T = len(xarrays[args.attr_names[0]].time)
     print("The dataset has {} time steps".format(T))
 
     # Filter by region
@@ -190,24 +191,25 @@ if __name__ == "__main__":
     # plot_season_functions(xarrays, y_name, season_data)
 
     # Run K-means clustering
-    X_values_n = normalize_values(X_values, should_normalize_clusterings)
-    clusterings = [KMeans(n_clusters=K, random_state=0).fit(data.T) for data in X_values_n]
+    X_values_n = normalize_values(X_values, args.should_normalize_clusterings)
+    clusterings = [KMeans(n_clusters=args.K, random_state=0).fit(data.T) for data in X_values_n]
 
     # Get centroids
-    centroids_all = get_centroids_all(X_values_n, clusterings, K, dims)
-    centroids_indices = get_centroid_indices(clusterings, K)
+    centroids_all = get_centroids_all(X_values_n, clusterings, args.K, dims)
+    centroids_indices = get_centroid_indices(clusterings, args.K)
 
     # Get cluster values
     X_cluster_centroids, X_cluster_means = get_X_cluster_values(
-        centroids_all, centroids_indices, X_names, X_grid, X_values, K)
+        centroids_all, centroids_indices, X_names, X_grid, X_values, args.K)
 
     # Plot clusterings
-    # plot_clusterings(attr_names, clusterings, centroids_all, lats, lons, dims)
-    # plot_clusterings_2(attr_names, clusterings, centroids_all, X_cluster_means, lats, lons, dims)
+    # plot_clusterings(args.attr_names, clusterings, centroids_all, lats, lons, dims)
+    # plot_clusterings_2(args.attr_names, clusterings, centroids_all, X_cluster_means, lats, lons, dims)
 
     # Save the data
     df = make_dataframe(xarrays, X_cluster_centroids, X_cluster_means,
-                        X_names, y_name, season_data, lag_time)
-    filepath = f"../data/dataframe_lag-{lag_time}_K-{K}_{'cnorm' if should_normalize_clusterings else 'no-cnorm'}_{version_name}.csv"
+                        X_names, y_name, season_data, args.lag_time)
+    _cl_str = {'cnorm' if args.should_normalize_clusterings else 'no-cnorm'}
+    filepath = f"../data/dataframe_lag-{args.lag_time}_K-{args.K}_{_cl_str}_{args.version_name}.csv"
     df.to_csv(filepath, index=False)
     print(f"Saved dataframe to {filepath}")
