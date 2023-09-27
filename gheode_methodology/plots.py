@@ -97,3 +97,36 @@ def plot_season_functions(xarrays, y_name, season_data):
     plt.xlabel("Date")
     plt.ylabel("Precipitation (mm)")
     plt.show()
+
+
+def plot_solution_array(df, sol, K, n_attrs, should_mask=True, title=""):
+    N = K * n_attrs
+
+    lag_times_s = sol[:, :N]
+    time_steps_s = sol[:, N:(N * 2)]
+    masks_s = sol[:, (N * 2):]
+
+    matrix = np.zeros((np.max(lag_times_s) + np.max(time_steps_s), N), dtype=np.int32)
+
+    for lag_times, time_steps, masks in zip(lag_times_s, time_steps_s, masks_s):
+        for i, (lag_time, time_step) in enumerate(zip(lag_times, time_steps)):
+            for t in range(time_step):
+                if should_mask:
+                    matrix[lag_time + t, i] += masks[i // n_attrs]
+                else:
+                    matrix[lag_time + t, i] += 1
+
+    plt.matshow(matrix, cmap="Blues")
+
+    plt.xticks(ticks=np.arange(0, matrix.shape[1]), labels=df.columns[:N].values, rotation=90)
+    plt.yticks(ticks=np.arange(0, matrix.shape[0] + 1), labels=[f'$T-{i}' for i in np.arange(1, matrix.shape[0] + 2)])
+    plt.gca().xaxis.set_ticks_position('bottom')
+
+    plt.xlabel("Attributes")
+    plt.ylabel("Timeline")
+
+    plt.suptitle(title, fontweight='bold')
+    plt.tight_layout()
+
+    plt.colorbar()
+    plt.show()
